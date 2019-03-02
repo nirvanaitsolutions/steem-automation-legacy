@@ -2,19 +2,31 @@ const _ = require('lodash');
 const express = require('express');
 const sdk = require('sc2-sdk');
 const bodyParser = require('body-parser');
-const redis = require('./redis')
+const mongoClient = require('./mongo_utils')
 const utils = require('./utils');
+var Block = require('./models/block').Block;
+var ValidationError = require('mongoose/lib/error/validation')
 const sc2 = sdk.Initialize({ app: 'steemlinked.app' });
-var cors = require('cors');
-const app = express();
-app.use(cors());
-app.use(bodyParser.json());
 const port = process.env.PORT || 4000;
-const server = app.listen(port, () => console.log(`Listening on ${port}`));
+const cache = {};
+const useCache = false;
+
+const limit = 50;
+
+const clearGC = () => {
+  try {
+    global.gc();
+  } catch (e) {
+    console.log("You must run program with 'node --expose-gc index.js' or 'npm start'");
+  }
+};
+
+setInterval(clearGC, 60 * 1000);
   
 /** Stream the blockchain for Transactions */
 
  const getTransactions = ops => {
+   console.log("in getTxn getting txns")
    ops.forEach(op => {
      const type = op.op[0];
      const params = op.op[1];
@@ -29,43 +41,31 @@ const server = app.listen(port, () => console.log(`Listening on ${port}`));
            timestamp: Date.parse(op.timestamp) / 1000,
            block: op.block,
          };
-          
-         //send freex if to is freedomex
-         if(params.to==='anlptl'){
-            console.log('Transfer', JSON.stringify(transaction));
-             utils.sendFreeX(params.from,params.amount);
-             console.log("sweets sent!")
-         }
+          console.log('Transfer', JSON.stringify(transaction));
+         //store to mongodb if from is swapsteem
          break;
          /** Add Cases for all transactionTYPES */
        }
      }
    });
-   return;
+   return true
+
  };
 
  const loadBlock = blockNum => {
+   console.log('in blocknum and loading block Num '+blockNum)
    utils
      .getOpsInBlock(blockNum, false)
      .then(ops => {
        if (!ops.length) {
+        console.error('in here with ', blockNum);
          console.error('Block does not exit?', blockNum);
          utils
            .getBlock(blockNum)
            .then(block => {
              if (block && block.previous && block.transactions.length === 0) {
                console.log('Block exist and is empty, load next', blockNum);
-               redis
-                 .setAsync('last_block_num', blockNum)
-                 .then(() => {
-                     console.log("block loaded "+blockNum)
-                   loadNextBlock();
-                 })
-                 .catch(err => {
-                   console.error('Redis set last_block_num failed', err);
-                   loadBlock(blockNum);
-                 });
-             } else {
+                } else {
                console.log('Sleep and retry', blockNum);
                utils.sleep(2000).then(() => {
                  loadBlock(blockNum);
@@ -83,12 +83,18 @@ const server = app.listen(port, () => console.log(`Listening on ${port}`));
              });
            });
        } else {
-         getTransactions(ops);
-         loadNextBlock()}
-           })
-           .catch(err => {
-             console.error('Gettxn failed', err);
-             loadBlock(blockNum);
+         console.log
+        Block.findOneAndUpdateAsync({},{'blockNum':blockNum})
+        .then(function (block) {
+            console.log("Saving block no :"+block)
+            var flag = getTransactions(ops);
+            flag === true ? loadNextBlock():loadBlock(blockNum)
+          }).catch(ValidationError, function(err) {
+            err.logError = false
+            err.productionMessage = true
+            throw err
+          });
+         }
            })
      .catch(err => {
        console.error('Call failed with lightrpc (getOpsInBlock)', err);
@@ -98,47 +104,49 @@ const server = app.listen(port, () => console.log(`Listening on ${port}`));
  };
 
  const loadNextBlock = () => {
-   redis
-     .getAsync('last_block_num')
-     .then(res => {
-         console.log("retrieved from redis "+res)
-       let nextBlockNum = res === null ? 30454670  : parseInt(res) + 1;
-       //let nextBlockNum =  304522970  ;// testing purpose
-       utils
-         .getGlobalProps()
-         .then(globalProps => {
-           const lastIrreversibleBlockNum = globalProps.last_irreversible_block_num;
-           if (lastIrreversibleBlockNum >= nextBlockNum) {
-             loadBlock(nextBlockNum);
-             console.log("now processing block no : "+nextBlockNum)
-           } else {
-             utils.sleep(2000).then(() => {
-               console.log(
-                 'Waiting to be on the lastIrreversibleBlockNum',
-                 lastIrreversibleBlockNum,
-                 'now nextBlockNum',
-                 nextBlockNum,
-               );
-               loadNextBlock();
-             });
-           }
-         })
-         .catch(err => {
-           console.error('Call failed with lightrpc (getGlobalProps)', err);
-           utils.sleep(2000).then(() => {
-             console.log('Retry loadNextBlock', nextBlockNum);
-             loadNextBlock();
-           });
-         });
-     })
-     .catch(err => {
-       console.error('Redis get last_block_num failed', err);
-     });
- };
+     Block.findOne().lean().then(function(foundItems){
+       console.log("last_block num : " +foundItems.blockNum)
+
+       let nextBlockNum = null;
+       if(foundItems.blockNum !==null){
+        nextBlockNum = parseInt(foundItems.blockNum)+1;
+        console.log("Now processing next block : #"+nextBlockNum)
+       }
+      //let nextBlockNum =  30476467  ;// testing purpose
+      utils
+        .getGlobalProps()
+        .then(globalProps => {
+          console.log("globalProps "+globalProps)
+          const lastIrreversibleBlockNum = globalProps.last_irreversible_block_num;
+          if (lastIrreversibleBlockNum >= nextBlockNum) {
+            console.log("calling loadblock()"+nextBlockNum)
+            loadBlock(nextBlockNum);
+            console.log("calling loadblock() done "+nextBlockNum)
+          } else {
+            utils.sleep(2000).then(() => {
+              console.log(
+                'Waiting to be on the lastIrreversibleBlockNum',
+                lastIrreversibleBlockNum,
+                'now nextBlockNum',
+                nextBlockNum,
+              );
+              loadNextBlock();
+            });
+          }
+        })
+        .catch(err => {
+          console.error('Call failed with lightrpc (getGlobalProps)', err);
+          utils.sleep(2000).then(() => {
+            console.log('Retry loadNextBlock', nextBlockNum);
+            loadNextBlock();
+          });
+        });
+      })
+    }
 
  const start = () => {
    console.info('Start streaming blockchain');
    loadNextBlock();
  };
- 
+
  start();

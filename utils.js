@@ -7,19 +7,31 @@ bluebird.promisifyAll(client);
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-const sendFreeX = (to,amount) => {
+const sendGMBLR = (to,amount) => {
   const wif = process.env.PRIVATEKEY ||'Private_Key';
   const json = {
     "contractName":"tokens",
     "contractAction":"transfer",
     "contractPayload":
-      {"symbol":"SWEET",
+      {"symbol":"GMBLR",
       "to":to,
       "quantity":amount,
-      "memo":"SWEET FOR STEEM"
+      "memo":"You have recieved your Gamblr reward"
     }
   }
   steem.broadcast.customJson(wif, 'anlptl', [], 'ssc-mainnet', json, function(err, result) {
+  console.log(err, result);
+});
+}
+const sendPayout = (to,amount,coin) => {
+  const wif = process.env.PRIVATEKEY ||'Private_Key';
+  const data = {
+    "from":"anlptl",
+    "to":to,
+    "amount":amount+coin,
+    "memo":"You have recieved your Gamblr Payout"    
+  }
+  steem.broadcast.transfer(data, wif, function(err, result) {
   console.log(err, result);
 });
 }
@@ -46,11 +58,17 @@ const getBlockOps = block => {
   });
   return operations;
 };
+const rollDice = (rollPrediction,txnId,Blocknum) => {
+  let rollResult = 51;
+  return rollResult;
+}
 
 module.exports = {
   sleep,
   getBlock,
-  sendFreeX,
+  sendGMBLR,
+  rollDice,
+  sendPayout,
   getOpsInBlock,
   getGlobalProps,
   mutliOpsInBlock,

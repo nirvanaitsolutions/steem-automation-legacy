@@ -38,11 +38,43 @@ setInterval(clearGC, 60 * 1000);
            from: params.from,
            amount: params.amount,
            memo: params.memo,
+           to:params.to,
            timestamp: Date.parse(op.timestamp) / 1000,
            block: op.block,
          };
-          console.log('Transfer', JSON.stringify(transaction));
+          //console.log('Transfer', JSON.stringify(op));
          //store to mongodb if from is swapsteem
+         if(transaction.to ==='magicdice' ){
+          console.log('Transfer', JSON.stringify(op));
+          //get memo
+          let dicememo = transaction.memo;
+          console.log("memo",dicememo);
+          //parse memo
+          let rollType = dicememo.split(' ')[0];
+          let rollPrediction = dicememo.split(' ')[1];
+          //get unique txnId
+          let txnId = op.trx_id;
+          let block = op.block;
+          //rollDice to generate a random number
+          let rollResult = utils.rollDice(rollPrediction,txnId,block)
+          let win = false;
+          //calculate win/loss
+          if (rollType==='under' && rollResult <= rollPrediction){
+            win = true;
+          } else if (rollType==='under' && rollResult > rollPrediction){
+            win = false;
+          } else if (rollType==='over' && rollResult >= rollPrediction){
+            win = true;
+          } else if (rollType==='over' && rollResult < rollPrediction){
+            win = false;
+          } else {
+            console.log("Invalid Bet")
+          }
+          console.log(dicememo,rollType,rollPrediction,txnId, win)
+          
+          //send the bet payout amount to user
+          //utils.sendPayout('aneilpatel',0.1,'STEEM')
+         }
          break;
          /** Add Cases for all transactionTYPES */
        }

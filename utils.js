@@ -4,32 +4,33 @@ const steem = require('steem');
 const client = new Client('https://api.steemit.com');
 steem.api.setOptions({  });
 bluebird.promisifyAll(client);
-
+const bot_account ="Bot Steem username"
+const bot_active_key = "Bot's Active private key"
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-const sendGMBLR = (to,amount) => {
-  const wif = process.env.PRIVATEKEY ||'Private_Key';
+const sendEngineTokens = (to,amount,token) => {
+  const wif = process.env.PRIVATEKEY ||bot_active_key;
   const json = {
     "contractName":"tokens",
     "contractAction":"transfer",
     "contractPayload":
-      {"symbol":"GMBLR",
+      {"symbol":token,
       "to":to,
       "quantity":amount,
-      "memo":"You have recieved your Gamblr reward"
+      "memo":"You have recieved your Steem Engine Tokens"
     }
   }
-  steem.broadcast.customJson(wif, 'anlptl', [], 'ssc-mainnet', json, function(err, result) {
+  steem.broadcast.customJson(wif, bot_account, [], 'ssc-mainnet', json, function(err, result) {
   console.log(err, result);
 });
 }
-const sendPayout = (to,amount,coin) => {
+const broadcastTransfer = (to,amount,coin) => {
   const wif = process.env.PRIVATEKEY ||'Private_Key';
   const data = {
-    "from":"anlptl",
+    "from":bot_account,
     "to":to,
     "amount":amount+coin,
-    "memo":"You have recieved your Gamblr Payout"    
+    "memo":"You have recieved your Steem sent by "+bot_account    
   }
   steem.broadcast.transfer(data, wif, function(err, result) {
   console.log(err, result);
@@ -58,17 +59,14 @@ const getBlockOps = block => {
   });
   return operations;
 };
-const rollDice = (rollPrediction,txnId,Blocknum) => {
-  let rollResult = 51;
-  return rollResult;
-}
+
 
 module.exports = {
   sleep,
   getBlock,
   sendGMBLR,
   rollDice,
-  sendPayout,
+  broadcastTransfer,
   getOpsInBlock,
   getGlobalProps,
   mutliOpsInBlock,

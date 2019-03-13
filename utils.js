@@ -64,8 +64,7 @@ const getBlockOps = block => {
 module.exports = {
   sleep,
   getBlock,
-  sendGMBLR,
-  rollDice,
+  sendEngineTokens,
   broadcastTransfer,
   getOpsInBlock,
   getGlobalProps,
